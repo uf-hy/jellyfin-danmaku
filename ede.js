@@ -242,10 +242,9 @@
             this.danmakuDensityLimit = danmakuDensityLimit ? parseInt(danmakuDensityLimit) : 0;
             // 滚动弹幕最大行数 0:不限制(使用默认轨道数)
             const danmakuMaxScrollLines = window.localStorage.getItem('danmakuMaxScrollLines');
-            this.danmakuMaxScrollLines = danmakuMaxScrollLines ? parseInt(danmakuMaxScrollLines) : 0;
-            // 全屏最大弹幕总数 0:不限制
+            this.danmakuMaxScrollLines = Math.max(0, parseInt(danmakuMaxScrollLines) || 0);
             const danmakuMaxCount = window.localStorage.getItem('danmakuMaxCount');
-            this.danmakuMaxCount = danmakuMaxCount ? parseInt(danmakuMaxCount) : 0;
+            this.danmakuMaxCount = Math.max(0, parseInt(danmakuMaxCount) || 0);
             // 使用弹幕防重叠
             const useAnitOverlap = window.localStorage.getItem('useAnitOverlap');
             this.useAnitOverlap = useAnitOverlap ? parseInt(useAnitOverlap) : 0;
@@ -323,10 +322,10 @@
             window.ede.danmakuDensityLimit = parseInt(document.getElementById('danmakuDensityLimit').value);
             window.localStorage.setItem('danmakuDensityLimit', window.ede.danmakuDensityLimit);
             showDebugInfo(`设置弹幕密度限制等级：${window.ede.danmakuDensityLimit}`);
-            window.ede.danmakuMaxScrollLines = parseInt(document.getElementById('danmakuMaxScrollLines').value);
+            window.ede.danmakuMaxScrollLines = Math.max(0, parseInt(document.getElementById('danmakuMaxScrollLines').value) || 0);
             window.localStorage.setItem('danmakuMaxScrollLines', window.ede.danmakuMaxScrollLines);
             showDebugInfo(`设置滚动弹幕最大行数：${window.ede.danmakuMaxScrollLines}`);
-            window.ede.danmakuMaxCount = parseInt(document.getElementById('danmakuMaxCount').value);
+            window.ede.danmakuMaxCount = Math.max(0, parseInt(document.getElementById('danmakuMaxCount').value) || 0);
             window.localStorage.setItem('danmakuMaxCount', window.ede.danmakuMaxCount);
             showDebugInfo(`设置全屏最大弹幕数：${window.ede.danmakuMaxCount}`);
             window.ede.useAnitOverlap = parseInt(document.querySelector('input[name="useAnitOverlap"]:checked').value);
@@ -1835,6 +1834,8 @@
 
         let _comments = preProcessDanmaku(comments, _container.offsetWidth, _container.offsetHeight);
 
+        _comments.sort((a, b) => a.time - b.time);
+
         if (window.ede.danmakuMaxCount > 0 && _comments.length > window.ede.danmakuMaxCount) {
             _comments = _comments.slice(0, window.ede.danmakuMaxCount);
         }
@@ -1876,6 +1877,8 @@
         let finalComments = [];
         if (window.ede.useAnitOverlap === 1) {
             finalComments = antiOverlapFilter(_comments, _container.offsetWidth, _container.offsetHeight);
+        } else if (window.ede.danmakuMaxScrollLines > 0) {
+            finalComments = scrollLinesLimitFilter(_comments, _container.offsetWidth, _container.offsetHeight);
         } else {
             finalComments = _comments;
         }
@@ -2147,9 +2150,9 @@
 
         const fontStyle = `${fontOptions} ${fontSize}px ${fontFamily}`;
 
-        const trackCount = Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1;
+        const trackCount = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1);
         const effectiveTrackCount = danmakuMaxScrollLines > 0 ? Math.min(trackCount, danmakuMaxScrollLines) : trackCount;
-        if (effectiveTrackCount === 0) return [];
+        if (effectiveTrackCount <= 0) return [];
 
         const duration = Math.ceil(containerWidth / speed);
 
@@ -2206,6 +2209,41 @@
         }
 
         return filteredList;
+    }
+
+    function scrollLinesLimitFilter(allDanmaku, containerWidth, containerHeight) {
+        const { speed, fontSize, fontOptions, fontFamily, heightRatio, danmakuMaxScrollLines } = window.ede;
+
+        const trackCount = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1);
+        const effectiveTrackCount = danmakuMaxScrollLines > 0 ? Math.min(trackCount, danmakuMaxScrollLines) : trackCount;
+        if (effectiveTrackCount <= 0) return allDanmaku.filter(d => d.mode !== 'rtl' && d.mode !== 'ltr');
+
+        const fontStyle = `${fontOptions} ${fontSize}px ${fontFamily}`;
+        const duration = Math.ceil(containerWidth / speed);
+
+        const scrollDanmaku = allDanmaku.filter(d => d.mode === 'rtl' || d.mode === 'ltr');
+        const fixedDanmaku = allDanmaku.filter(d => d.mode !== 'rtl' && d.mode !== 'ltr');
+
+        scrollDanmaku.sort((a, b) => a.time - b.time);
+
+        const tracksReleaseTimes = new Array(effectiveTrackCount).fill(0);
+        const filteredScroll = [];
+
+        for (const danmaku of scrollDanmaku) {
+            const danmakuWidth = calculateDanmakuWidth(danmaku.text, fontStyle);
+            const actualSpeed = (containerWidth + danmakuWidth) / duration;
+            const timeToEnter = danmakuWidth / actualSpeed;
+
+            for (let i = 0; i < tracksReleaseTimes.length; i++) {
+                if (danmaku.time >= tracksReleaseTimes[i]) {
+                    filteredScroll.push(danmaku);
+                    tracksReleaseTimes[i] = danmaku.time + timeToEnter;
+                    break;
+                }
+            }
+        }
+
+        return [...filteredScroll, ...fixedDanmaku].sort((a, b) => a.time - b.time);
     }
 
     function antiOverlapFilter(allDanmaku, containerWidth, containerHeight) {
