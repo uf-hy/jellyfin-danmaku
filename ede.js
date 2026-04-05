@@ -2182,9 +2182,9 @@
     function filterOverlappedFixedDanmaku(sortedFixedDanmaku, containerWidth, containerHeight) {
         const { speed, fontSize, heightRatio } = window.ede;
 
-        const trackCount = Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1;
+        const trackCount = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1));
 
-        if (!sortedFixedDanmaku || sortedFixedDanmaku.length === 0 || trackCount === 0) {
+        if (!sortedFixedDanmaku || sortedFixedDanmaku.length === 0 || trackCount <= 0) {
             return [];
         }
 
@@ -2262,14 +2262,11 @@
             }
         }
 
-        // 处理滚动弹幕
-        let rtlResults = [];
-        if (segregatedDanmaku.rtl.length > 0) {
-            rtlResults = filterOverlappedScrollDanmaku(segregatedDanmaku.rtl, containerWidth, containerHeight);
-        }
-        let ltrResults = [];
-        if (segregatedDanmaku.ltr.length > 0) {
-            ltrResults = filterOverlappedScrollDanmaku(segregatedDanmaku.ltr, containerWidth, containerHeight);
+        // 合并处理滚动弹幕，统一应用行数限制
+        const allScrollDanmaku = [...segregatedDanmaku.rtl, ...segregatedDanmaku.ltr];
+        let scrollResults = [];
+        if (allScrollDanmaku.length > 0) {
+            scrollResults = filterOverlappedScrollDanmaku(allScrollDanmaku, containerWidth, containerHeight);
         }
 
         // 处理顶部弹幕
@@ -2284,7 +2281,7 @@
             bottomResults = filterOverlappedFixedDanmaku(segregatedDanmaku.bottom, containerWidth, containerHeight);
         }
 
-        return [...rtlResults, ...ltrResults, ...topResults, ...bottomResults].sort((a, b) => a.time - b.time);
+        return [...scrollResults, ...topResults, ...bottomResults].sort((a, b) => a.time - b.time);
     }
 
     function list2string($obj2) {
