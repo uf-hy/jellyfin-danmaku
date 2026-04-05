@@ -2047,9 +2047,9 @@
         // 密度过滤参数
         const shouldFilterDensity = danmakuDensityLimit > 0;
         const duration = Math.ceil(containerWidth / speed);
-        const lines = Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1;
-        const scrollLimit = (9 - danmakuDensityLimit * 2) * lines;
-        const verticalLimit = lines - 1 > 0 ? lines - 1 : 1;
+        const lines = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1);
+        const scrollLimit = Math.max(0, (9 - danmakuDensityLimit * 2) * lines);
+        const verticalLimit = lines > 0 ? lines : 1;
 
         // 初始化状态变量和结果数组
         const uniqueMap = new Map();
@@ -2182,7 +2182,7 @@
     function filterOverlappedFixedDanmaku(sortedFixedDanmaku, containerWidth, containerHeight) {
         const { speed, fontSize, heightRatio } = window.ede;
 
-        const trackCount = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1));
+        const trackCount = Math.max(0, Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1);
 
         if (!sortedFixedDanmaku || sortedFixedDanmaku.length === 0 || trackCount <= 0) {
             return [];
@@ -2263,7 +2263,7 @@
         }
 
         // 合并处理滚动弹幕，统一应用行数限制
-        const allScrollDanmaku = [...segregatedDanmaku.rtl, ...segregatedDanmaku.ltr];
+        const allScrollDanmaku = sortedDanmaku.filter(d => d.mode === 'rtl' || d.mode === 'ltr');
         let scrollResults = [];
         if (allScrollDanmaku.length > 0) {
             scrollResults = filterOverlappedScrollDanmaku(allScrollDanmaku, containerWidth, containerHeight);
