@@ -240,6 +240,12 @@
             // 弹幕密度限制等级 0:不限制 1:低 2:中 3:高
             const danmakuDensityLimit = window.localStorage.getItem('danmakuDensityLimit');
             this.danmakuDensityLimit = danmakuDensityLimit ? parseInt(danmakuDensityLimit) : 0;
+            // 滚动弹幕最大行数 0:不限制(使用默认轨道数)
+            const danmakuMaxScrollLines = window.localStorage.getItem('danmakuMaxScrollLines');
+            this.danmakuMaxScrollLines = danmakuMaxScrollLines ? parseInt(danmakuMaxScrollLines) : 0;
+            // 全屏最大弹幕总数 0:不限制
+            const danmakuMaxCount = window.localStorage.getItem('danmakuMaxCount');
+            this.danmakuMaxCount = danmakuMaxCount ? parseInt(danmakuMaxCount) : 0;
             // 使用弹幕防重叠
             const useAnitOverlap = window.localStorage.getItem('useAnitOverlap');
             this.useAnitOverlap = useAnitOverlap ? parseInt(useAnitOverlap) : 0;
@@ -317,6 +323,12 @@
             window.ede.danmakuDensityLimit = parseInt(document.getElementById('danmakuDensityLimit').value);
             window.localStorage.setItem('danmakuDensityLimit', window.ede.danmakuDensityLimit);
             showDebugInfo(`设置弹幕密度限制等级：${window.ede.danmakuDensityLimit}`);
+            window.ede.danmakuMaxScrollLines = parseInt(document.getElementById('danmakuMaxScrollLines').value);
+            window.localStorage.setItem('danmakuMaxScrollLines', window.ede.danmakuMaxScrollLines);
+            showDebugInfo(`设置滚动弹幕最大行数：${window.ede.danmakuMaxScrollLines}`);
+            window.ede.danmakuMaxCount = parseInt(document.getElementById('danmakuMaxCount').value);
+            window.localStorage.setItem('danmakuMaxCount', window.ede.danmakuMaxCount);
+            showDebugInfo(`设置全屏最大弹幕数：${window.ede.danmakuMaxCount}`);
             window.ede.useAnitOverlap = parseInt(document.querySelector('input[name="useAnitOverlap"]:checked').value);
             window.localStorage.setItem('useAnitOverlap', window.ede.useAnitOverlap);
             showDebugInfo(`是否使用弹幕防重叠：${window.ede.useAnitOverlap}`);
@@ -666,6 +678,14 @@
             <span id="lbdanmakuDensityLimit" class="settings-flex-auto">密度限制等级:</span>
             <input type="range" id="danmakuDensityLimit"  min="0" max="3" step="1" value="${window.ede.danmakuDensityLimit}" />
         `),
+                htmlToElement(`
+            <span id="lbdanmakuMaxScrollLines" class="settings-flex-auto">滚动弹幕最大行数:</span>
+            <input type="range" id="danmakuMaxScrollLines" min="0" max="20" step="1" value="${window.ede.danmakuMaxScrollLines || 0}" />
+        `),
+                htmlToElement(`
+            <label class="settings-flex-auto">全屏最大弹幕数:</label>
+            <div><input class="settings-flex-grow" id="danmakuMaxCount" type="number" min="0" max="9999" step="100" placeholder="0=不限制" value="${window.ede.danmakuMaxCount || 0}" /></div>
+        `),
                 htmlToElement(`                            
             <label class="settings-flex-auto">弹幕防重叠:</label>
             <div><input type="radio" id="enableAntiOverlap" name="useAnitOverlap" value="1" ${window.ede.useAnitOverlap === 1 ? 'checked' : ''}>
@@ -851,6 +871,7 @@
         document.getElementById('danmakuOffsetTime').addEventListener('keydown', (event) => event.stopPropagation(), true);
         document.getElementById('customCorsProxy').addEventListener('keydown', (event) => event.stopPropagation(), true);
         document.getElementById('customApiPrefix').addEventListener('keydown', (event) => event.stopPropagation(), true);
+        document.getElementById('danmakuMaxCount').addEventListener('keydown', (event) => event.stopPropagation(), true);
         
         // 初始化显示默认标签内容
         if (activeTabId) {
@@ -1814,6 +1835,10 @@
 
         let _comments = preProcessDanmaku(comments, _container.offsetWidth, _container.offsetHeight);
 
+        if (window.ede.danmakuMaxCount > 0 && _comments.length > window.ede.danmakuMaxCount) {
+            _comments = _comments.slice(0, window.ede.danmakuMaxCount);
+        }
+
         showDebugInfo(`弹幕加载成功: ${_comments.length}`);
         showDebugInfo(`弹幕透明度：${window.ede.opacity}`);
         showDebugInfo(`弹幕速度：${window.ede.speed}`);
@@ -2114,7 +2139,7 @@
     }
 
     function filterOverlappedScrollDanmaku(sortedScrollDanmaku, containerWidth, containerHeight) {
-        const { speed, fontSize, fontOptions, fontFamily, heightRatio } = window.ede;
+        const { speed, fontSize, fontOptions, fontFamily, heightRatio, danmakuMaxScrollLines } = window.ede;
 
         if (!sortedScrollDanmaku || sortedScrollDanmaku.length === 0) {
             return [];
@@ -2123,29 +2148,24 @@
         const fontStyle = `${fontOptions} ${fontSize}px ${fontFamily}`;
 
         const trackCount = Math.floor((containerHeight * heightRatio - 18) / fontSize) - 1;
-        if (trackCount === 0) return [];
+        const effectiveTrackCount = danmakuMaxScrollLines > 0 ? Math.min(trackCount, danmakuMaxScrollLines) : trackCount;
+        if (effectiveTrackCount === 0) return [];
 
         const duration = Math.ceil(containerWidth / speed);
 
-        const tracksReleaseTimes = new Array(trackCount).fill(0);
+        const tracksReleaseTimes = new Array(effectiveTrackCount).fill(0);
         const filteredList = [];
 
         for (const danmaku of sortedScrollDanmaku) {
-            // 预计算弹幕自身属性
             const danmakuWidth = calculateDanmakuWidth(danmaku.text, fontStyle);
             const actualSpeed = (containerWidth + danmakuWidth) / duration;
 
-            // 弹幕自身进入屏幕所需时间
             const timeToEnter = danmakuWidth / actualSpeed;
 
-            // 寻找可用轨道
             for (let i = 0; i < tracksReleaseTimes.length; i++) {
-                // 检查该轨道是否在弹幕需要出现时已经空闲
                 if (danmaku.time >= tracksReleaseTimes[i]) {
-                    // 分配成功
                     filteredList.push(danmaku);
 
-                    // 更新该轨道的下一次可用时间
                     tracksReleaseTimes[i] = danmaku.time + timeToEnter;
 
                     break;
@@ -2354,7 +2374,6 @@
 
                     // 获取滑块的映射显示文本
                     const getDisplayValue = (value, inputElement) => {
-                        // 检查是否是弹幕密度相关的滑块
                         if (inputElement.id === 'danmakuDensityLimit') {
                             const densityMap = {
                                 0: '不限制',
@@ -2363,6 +2382,9 @@
                                 3: '高',
                             };
                             return densityMap[value] || value;
+                        }
+                        if (inputElement.id === 'danmakuMaxScrollLines') {
+                            return value === '0' ? '不限制' : value;
                         }
                         return value;
                     };
